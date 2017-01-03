@@ -1,0 +1,2 @@
+
+call vimelixirsmarttrace#boot()
