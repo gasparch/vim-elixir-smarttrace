@@ -59,67 +59,48 @@ endfunction "}}}
 function! vimelixirsmarttrace#bootGlobal() " {{{
 endfunction " }}}
 
-" support MixCompile
-let s:traceTemplate = "#\n
-            \ :dbg.stop_clear\n
-            \ :dbg.start\n
-            \ \n
-            \ port_fun = :dbg.trace_port(:file, '%%FILE%%')\n
-            \ :dbg.tracer(:port, port_fun)\n
-            \ \n
-            \ alias Mix.Tasks.Compile.Elixir, as: E\n
-            \ import Mix.Compilers.Elixir, only: [read_manifest: 2, module: 1]\n
-            \ \n
-            \ # start tracing for all modules in project\n
-            \ for manifest <- E.manifests(),\n
-            \     module(module: mod_name) <- read_manifest(manifest, \"\"), \n
-            \ do: \n
-            \     :dbg.tpl mod_name, [{:'_', [], [{:return_trace}]}]\n
-            \ \n
-            \ :dbg.p(:new_processes, [:c, :m])\n
-            \ \n
-            \ # TODO: add waiting until CODE finishes execution and then only stop \n
-            \ # the tracer \n
-            \ spawn(fn() -> %%CODE%% end)\n
-            \ \n
-            \ :dbg.trace_port_control(node(), :flush)\n
-            \ :dbg.stop\n
-            \ Process.sleep 1500\n
-            \ \n
-            \ defmodule TraceReader do\n
-            \   def read(x,state) do\n
-            \     IO.inspect x, limit: 10000, pretty: true, width: 140\n
-            \     state \n
-            \   end\n
-            \ end\n
-            \ :dbg.trace_client(:file, '%%FILE%%', {&TraceReader.read/2, :zero_state}) \n
-            \ Process.sleep 1500\n
-            \ \n
-            \"
-
 function! vimelixirsmarttrace#setTraceCommand() " {{{
     "let mixDir = vimelixirsmarttrace#findMixDirectory()
     "command! -bang -buffer MixCompile call vimelixirsmarttrace#runMixCompileCommand('<bang>')
     command! -range TraceSelection call vimelixirsmarttrace#runTraceSelectionCommand('!', <line1>, <line2>)
+
+    command! TraceTest call vimelixirsmarttrace#runTracedTest()
     "map <buffer> <Leader>xc :MixCompile<CR>
 endfunction " }}}
 
 function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
+    let text = join(getline(a:line1, a:line2), "\n")
+
+    return s:runTrace(text, 'dev', '')
+endfunction " }}}
+
+function! vimelixirsmarttrace#runTracedTest() " {{{
     let mixDir = vimelixirsmarttrace#findMixDirectory()
 
-    let text = join(getline(a:line1, a:line2), "\n")
+    let fileName = expand('%:p')
+    let fileName = substitute(fileName, mixDir . '/', '', '')
+
+    let testSpec = escape(fileName, ' ') . ':' . line('.')
+
+    let text = 'Mix.Task.run "test", ["'.testSpec.'"]'
+
+    return s:runTrace(':ok', 'test', testSpec)
+endfunction " }}}
+
+function! s:runTrace(code, env, testSpec) "{{{
+    let mixDir = vimelixirsmarttrace#findMixDirectory()
 
     let tempName = tempname() .".erltrace"
     let srcTempName = fnameescape(tempname() .".exs")
 
-    let txt = vimelixirtrace#dump#dump(tempName, text)
+    let txt = vimelixirtrace#dump#dump(tempName, a:code, a:testSpec)
     call s:writeToFile(txt, srcTempName)
 
     " save options and locale env variables
     let old_cwd = getcwd()
     execute 'lcd ' . fnameescape(mixDir)
 
-    let mixPrg = "mix run " . fnameescape(srcTempName)
+    let mixPrg = "env MIX_ENV='".a:env."' mix run " . fnameescape(srcTempName)
 
     call s:echoInfoText('starting trace run')
 
@@ -139,7 +120,8 @@ function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
     silent! setlocal buftype=nofile noswapfile nobuflisted ft=erltrace
     silent! put=trace_output
     silent! normal ggdd
-endfunction " }}}
+
+endfunction "}}}
 
 " Get the value of a Vim variable.  Allow local variables to override global ones.
 function! s:rawVar(name, ...) abort " {{{
@@ -171,19 +153,6 @@ function s:system(command) abort "{{{
 
     return out
 endfunction "}}}
-
-"function s:getPluginDirectory()
-"    return expand('<sfile>:p:h')
-"endfunction
-
-"function! s:readFile(fName)
-"    silent! new
-"    silent! setlocal buftype=nofile bufhidden=hide noswapfile nobuflisted
-"    silent! exec "r ".fnameescape(a:fName)
-"    let lines = join(getline(1, '$'), "\n")
-"    silent! q
-"    return lines
-"endfunction
 
 function! s:writeToFile(message, file) "{{{
   silent! new
@@ -221,7 +190,6 @@ function! vimelixirsmarttrace#findMixDirectory() "{{{
     endwhile
 endfunction "}}}
 
-
 function! s:echoWarning(text) "{{{
     echohl WarningMsg | echo a:text | echohl None
 endfunction "}}}
@@ -248,21 +216,24 @@ function! s:setGlobal(name, default) " {{{
   endif
 endfunction " }}}
 
-function! vimelixirsmarttrace#runTraceHighlight()
+function! vimelixirsmarttrace#runTraceHighlight() "{{{
     " TODO: use conceal only in terminal version???
     " TODO: use BufEnter/Leave to increase/decrease conceal contrast
     "hi Conceal term=underline cterm=bold ctermfg=LightGray
 
     syntax match Comma "❟" conceal cchar=,
+    syntax match DeadProcess "^\w\+->☠\w\+"
 
-    augroup ElixirSmartTraceFile " {{{
+    hi link DeadProcess Error
+
+    augroup ElixirSmartTraceFile
         au!
         au CursorMoved <buffer> call vimelixirsmarttrace#highlightMatch()
-    augroup END " }}}
-endfunction
+    augroup END
+endfunction "}}}
 
 let s:highlightMatch = 0
-function! vimelixirsmarttrace#highlightMatch()
+function! vimelixirsmarttrace#highlightMatch() "{{{
     let ln = getline('.')
 
     let matches = matchlist(ln, '^\([A-Z]\):\(\d\+\): \(\w\+\) ')
@@ -272,7 +243,7 @@ function! vimelixirsmarttrace#highlightMatch()
     endif
 
     if s:highlightMatch
-        call matchdelete(s:highlightMatch)
+        silent! call matchdelete(s:highlightMatch)
         let s:highlightMatch = 0
     endif
 
@@ -292,10 +263,9 @@ function! vimelixirsmarttrace#highlightMatch()
     let currentNum = line('.')
 
     let s:highlightMatch = matchadd('MatchParen', '^\%(\%'. matchLnNum .'l\|\%'.currentNum.'l\)[A-Z]\+:\d\+: \w\+', 16, -1)
-endfunction
+endfunction "}}}
 
-
-function! s:processTraceDump(text)
+function! s:processTraceDump(text) "{{{
     let lines = split(a:text, "\n")
 
     while len(lines) > 0 && lines[0] !~ '^======== trace start ========'
@@ -315,7 +285,7 @@ function! s:processTraceDump(text)
     endif
 
     return join(lines, "\n")
-endfunction
+endfunction "}}}
 
 augroup ElixirSmartTrace " {{{
     au!
