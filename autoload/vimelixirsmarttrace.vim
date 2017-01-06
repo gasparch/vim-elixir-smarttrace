@@ -9,7 +9,7 @@
 " - running
 "   - run selected piece of code with tracing enabled
 "   - collect trace file
-" 
+"
 " - opening trace file
 "   - convert existing trace file in human readable way
 "       - call support
@@ -31,11 +31,10 @@
 " - navigation
 "   - jump to called/returning function from trace window
 "   - go to next/prev function call
-"   - 
+"   -
 "
 
 let s:BOOT_FINISHED = 0
-
 
 function! vimelixirsmarttrace#boot() " {{{
   " TODO: move into if below?
@@ -110,12 +109,10 @@ function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
 
     let text = join(getline(a:line1, a:line2), "\n")
 
-    let tempName = fnameescape(tempname() .".erltrace")
+    let tempName = tempname() .".erltrace"
     let srcTempName = fnameescape(tempname() .".exs")
 
-    let txt = substitute(s:traceTemplate, '%%CODE%%', text, 'g')
-    let txt = substitute(txt, '%%FILE%%', tempName, 'g')
-
+    let txt = vimelixirtrace#dump#dump(tempName, text)
     call s:writeToFile(txt, srcTempName)
 
     " save options and locale env variables
@@ -124,7 +121,9 @@ function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
 
     let mixPrg = "mix run " . fnameescape(srcTempName)
 
-    let errors = s:system(mixPrg)
+    call s:echoInfoText('starting trace run')
+
+    let trace_output = s:system(mixPrg)
 
     execute 'lcd ' . fnameescape(old_cwd)
 
@@ -132,10 +131,13 @@ function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
     " see zip.vim for Browse function
     "
     " /usr/share/vim/vim80/autoload/zip.vim
+    "
+
+    debug let trace_output = s:processTraceDump(trace_output)
 
     silent! new
-    silent! setlocal buftype=nofile noswapfile nobuflisted
-    silent! put=errors
+    silent! setlocal buftype=nofile noswapfile nobuflisted ft=erltrace
+    silent! put=trace_output
     silent! normal ggdd
 endfunction " }}}
 
@@ -174,7 +176,7 @@ endfunction "}}}
 "    return expand('<sfile>:p:h')
 "endfunction
 
-"function! s:readFile(fName) 
+"function! s:readFile(fName)
 "    silent! new
 "    silent! setlocal buftype=nofile bufhidden=hide noswapfile nobuflisted
 "    silent! exec "r ".fnameescape(a:fName)
@@ -246,11 +248,79 @@ function! s:setGlobal(name, default) " {{{
   endif
 endfunction " }}}
 
+function! vimelixirsmarttrace#runTraceHighlight()
+    " TODO: use conceal only in terminal version???
+    " TODO: use BufEnter/Leave to increase/decrease conceal contrast
+    "hi Conceal term=underline cterm=bold ctermfg=LightGray
 
-"augroup ElixirExUnit " {{{
-"    au!
-"    "au BufWritePost *.ex,*.exs call vimelixirsmarttrace#runExUnitWatchAutoRun()
-"augroup END " }}}
+    syntax match Comma "❟" conceal cchar=,
+
+    augroup ElixirSmartTraceFile " {{{
+        au!
+        au CursorMoved <buffer> call vimelixirsmarttrace#highlightMatch()
+    augroup END " }}}
+endfunction
+
+let s:highlightMatch = 0
+function! vimelixirsmarttrace#highlightMatch()
+    let ln = getline('.')
+
+    let matches = matchlist(ln, '^\([A-Z]\):\(\d\+\): \(\w\+\) ')
+
+    if len(matches) == 0
+        return
+    endif
+
+    if s:highlightMatch
+        call matchdelete(s:highlightMatch)
+        let s:highlightMatch = 0
+    endif
+
+    let direction = 'nW'
+    if matches[3] == 'ret'
+        let direction .= 'b'
+    endif
+
+    let prefix = '^' . matches[1] . ':' . matches[2] . ': '
+
+    let [matchLnNum, ignoreCol] = searchpairpos(prefix . 'call', '', prefix . 'ret', direction)
+
+    if matchLnNum == 0
+        return
+    endif
+
+    let currentNum = line('.')
+
+    let s:highlightMatch = matchadd('MatchParen', '^\%(\%'. matchLnNum .'l\|\%'.currentNum.'l\)[A-Z]\+:\d\+: \w\+', 16, -1)
+endfunction
+
+
+function! s:processTraceDump(text)
+    let lines = split(a:text, "\n")
+
+    while len(lines) > 0 && lines[0] !~ '^======== trace start ========'
+        call remove(lines, 0)
+    endwhile
+
+    if len(lines) > 0 && lines[0] =~ '^======== trace start ========'
+        call remove(lines, 0)
+    endif
+
+    while len(lines) > 0 && lines[len(lines)-1] !~ '^======== trace stop ========'
+        call remove(lines, -1)
+    endwhile
+
+    if len(lines) > 0 && lines[len(lines)-1] =~ '^======== trace stop ========'
+        call remove(lines, -1)
+    endif
+
+    return join(lines, "\n")
+endfunction
+
+augroup ElixirSmartTrace " {{{
+    au!
+    au FileType erltrace call vimelixirsmarttrace#runTraceHighlight()
+augroup END " }}}
 
 " vim: set sw=4 sts=4 et fdm=marker:
 "
