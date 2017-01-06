@@ -114,7 +114,7 @@ function! s:runTrace(code, env, testSpec) "{{{
     " /usr/share/vim/vim80/autoload/zip.vim
     "
 
-    debug let trace_output = s:processTraceDump(trace_output)
+    let trace_output = s:processTraceDump(trace_output)
 
     silent! new
     silent! setlocal buftype=nofile noswapfile nobuflisted ft=erltrace
@@ -222,9 +222,29 @@ function! vimelixirsmarttrace#runTraceHighlight() "{{{
     "hi Conceal term=underline cterm=bold ctermfg=LightGray
 
     syntax match Comma "❟" conceal cchar=,
-    syntax match DeadProcess "^\w\+->☠\w\+"
+    if has("gui_running")
+        syntax match EOFStart "«⋯"
+        syntax match EOFEnd "⋯»"
+        syntax match ReturnValue "⤶"
+        syntax match MessageSend "→"
+        syntax match MessageRecv "←"
+        syntax match MessageDeadProcess "^\w\+→☠\w\+"
+    else
+        syntax match EOFStart "«⋯" conceal cchar=<
+        syntax match EOFEnd "⋯»" conceal cchar=>
+        syntax match ReturnValue "⤶" conceal cchar=<
+        syntax match MessageSend "→" conceal cchar=>
+        syntax match MessageRecv "←" conceal cchar=<
+        syntax match MessageDeadProcess "^\w\+→☠\w\+"
+    endif
 
-    hi link DeadProcess Error
+    hi link MessageDeadProcess Error
+    hi link EOFStart    Comment
+    hi link EOFEnd      Comment
+    hi link ReturnValue Comment
+    hi link MessageSend Comment
+    hi link MessageRecv Comment
+    hi link Comma       Comment
 
     augroup ElixirSmartTraceFile
         au!

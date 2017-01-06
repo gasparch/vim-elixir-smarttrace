@@ -92,13 +92,8 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \\n
     \    msg_view = inspect(msg, width: 70, pretty: true)\n
     \\n
-    \    if msg_view =~ ~R[\n] do\n
-    \      first_line = msg_view |> String.split(\"\n\") |> List.first()\n
-    \      IO.puts \"#{proc_name}->#{to_proc}: #{first_line}...\"\n
-    \      IO.puts \">msg\n\" <> msg_view <> \"\n<msg\"\n
-    \    else\n
-    \      IO.puts \"#{proc_name}->#{to_proc}: #{msg_view}\"\n
-    \    end\n
+    \    prefix = \"#{proc_name}→#{to_proc}:\"\n
+    \    print_call(prefix, msg_view)\n
     \\n
     \    state = %{state| prev_msg: msg}\n
     \    state = %{state| prev_result: :no_results_defined}\n
@@ -110,13 +105,8 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \\n
     \    msg_view = inspect(msg, width: 70, pretty: true)\n
     \\n
-    \    if msg_view =~ ~R[\n] do\n
-    \      first_line = msg_view |> String.split(\"\n\") |> List.first()\n
-    \      IO.puts \"#{proc_name}->☠#{to_proc}: #{first_line}...\"\n
-    \      IO.puts \">msg\n\" <> msg_view <> \"\n<msg\"\n
-    \    else\n
-    \      IO.puts \"#{proc_name}->☠#{to_proc}: #{msg_view}\"\n
-    \    end\n
+    \    prefix = \"#{proc_name}→☠#{to_proc}:\"\n
+    \    print_call(prefix, msg_view)\n
     \\n
     \    state = %{state| prev_msg: msg}\n
     \    state = %{state| prev_result: :no_results_defined}\n
@@ -131,13 +121,8 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \      inspect(msg, width: 70, pretty: true)\n
     \    end\n
     \\n
-    \    if msg_view =~ ~R[\n] do\n
-    \      first_line = msg_view |> String.split(\"\n\") |> List.first()\n
-    \      IO.puts \"->#{proc_name}: #{first_line}...\"\n
-    \      IO.puts \">msg\n\" <> msg_view <> \"\n<msg\"\n
-    \    else\n
-    \      IO.puts \"->#{proc_name}: #{msg_view}\"\n
-    \    end\n
+    \    prefix = \"#{proc_name}←:\"\n
+    \    print_call(prefix, msg_view)\n
     \\n
     \    state = %{state| prev_msg: msg}\n
     \    state = %{state| prev_result: :no_results_defined}\n
@@ -155,13 +140,8 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \\n
     \    arity = length(args)\n
     \\n
-    \    if args_view =~ ~R[\n] do\n
-    \      first_line = args_view |> String.split(\"\n\") |> List.first()\n
-    \      IO.puts \"#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity} (#{first_line} ...)\"\n
-    \      IO.puts \">args\n\" <> args_view <> \"\n<args\"\n
-    \    else\n
-    \      IO.puts \"#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity} (#{args_view})\"\n
-    \    end\n
+    \    prefix = \"#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity}\"\n
+    \    print_call(prefix, args_view, \"(\", \")\")\n
     \\n
     \    state\n
     \  end\n
@@ -181,13 +161,8 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \      {result_view, %{state| prev_result: result}}\n
     \    end\n
     \\n
-    \    if result_view =~ ~R[\n] do\n
-    \      first_line = result_view |> String.split(\"\n\") |> List.first()\n
-    \      IO.puts \"#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} -> #{first_line}...\"\n
-    \      IO.puts \">results\n\" <> result_view <> \"\n<results\"\n
-    \    else\n
-    \      IO.puts \"#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} -> #{result_view}\"\n
-    \    end\n
+    \    prefix = \"#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} ⤶\"\n
+    \    print_call(prefix, result_view)\n
     \\n
     \    {_, state} = proc_change_level(pid, state, -1)\n
     \    state\n
@@ -203,6 +178,18 @@ function! vimelixirtrace#dump#dump(fname, code, testSpec)
     \  def read(x,state) do\n
     \    IO.inspect x, limit: 10000, pretty: true, width: 140\n
     \    state\n
+    \  end\n
+    \\n
+    \  defp print_call(prefix, args_view, open_brace\\\\\"\", close_brace\\\\\"\") do\n
+    \    if args_view =~ ~R[\\n] do\n
+    \      split_lines = args_view |> String.split(\"\\n\")\n
+    \      first_line = List.first(split_lines)\n
+    \      split_lines = split_lines |> Enum.map(&\"    #{&1}\") |> Enum.join(\"\\n\")\n
+    \      IO.puts \"#{prefix} #{open_brace}#{first_line}… «⋯\"\n
+    \      IO.puts \"#{open_brace}#{split_lines}#{close_brace} ⋯»\"\n
+    \    else\n
+    \      IO.puts \"#{prefix} #{open_brace}#{args_view}#{close_brace}\"\n
+    \    end\n
     \  end\n
     \\n
     \  def proc2name(pid, state) do\n

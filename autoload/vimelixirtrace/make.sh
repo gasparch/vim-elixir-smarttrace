@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-EXS=`cat generate_dump.exs | sed -e 's/"/\\\\"/g' -e 's/$/\\\\n/g' -e 's/^/    \\\\/'`
+EXS=`cat generate_dump.exs | sed -e 's/\\\/\\\\\\\\/g' -e 's/"/\\\\"/g' -e 's/$/\\\\n/g' -e 's/^/    \\\\/'`
 
 
 cat > dump.vim <<EOF

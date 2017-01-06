@@ -88,13 +88,8 @@ defmodule TraceReader do
 
     msg_view = inspect(msg, width: 70, pretty: true)
 
-    if msg_view =~ ~R[\n] do
-      first_line = msg_view |> String.split("\n") |> List.first()
-      IO.puts "#{proc_name}->#{to_proc}: #{first_line}..."
-      IO.puts ">msg\n" <> msg_view <> "\n<msg"
-    else
-      IO.puts "#{proc_name}->#{to_proc}: #{msg_view}"
-    end
+    prefix = "#{proc_name}→#{to_proc}:"
+    print_call(prefix, msg_view)
 
     state = %{state| prev_msg: msg}
     state = %{state| prev_result: :no_results_defined}
@@ -106,13 +101,8 @@ defmodule TraceReader do
 
     msg_view = inspect(msg, width: 70, pretty: true)
 
-    if msg_view =~ ~R[\n] do
-      first_line = msg_view |> String.split("\n") |> List.first()
-      IO.puts "#{proc_name}->☠#{to_proc}: #{first_line}..."
-      IO.puts ">msg\n" <> msg_view <> "\n<msg"
-    else
-      IO.puts "#{proc_name}->☠#{to_proc}: #{msg_view}"
-    end
+    prefix = "#{proc_name}→☠#{to_proc}:"
+    print_call(prefix, msg_view)
 
     state = %{state| prev_msg: msg}
     state = %{state| prev_result: :no_results_defined}
@@ -127,13 +117,8 @@ defmodule TraceReader do
       inspect(msg, width: 70, pretty: true)
     end
 
-    if msg_view =~ ~R[\n] do
-      first_line = msg_view |> String.split("\n") |> List.first()
-      IO.puts "->#{proc_name}: #{first_line}..."
-      IO.puts ">msg\n" <> msg_view <> "\n<msg"
-    else
-      IO.puts "->#{proc_name}: #{msg_view}"
-    end
+    prefix = "#{proc_name}←:"
+    print_call(prefix, msg_view)
 
     state = %{state| prev_msg: msg}
     state = %{state| prev_result: :no_results_defined}
@@ -151,13 +136,8 @@ defmodule TraceReader do
 
     arity = length(args)
 
-    if args_view =~ ~R[\n] do
-      first_line = args_view |> String.split("\n") |> List.first()
-      IO.puts "#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity} (#{first_line} ...)"
-      IO.puts ">args\n" <> args_view <> "\n<args"
-    else
-      IO.puts "#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity} (#{args_view})"
-    end
+    prefix = "#{proc_name}:#{level}: call #{inspect(m)}:#{f}/#{arity}"
+    print_call(prefix, args_view, "(", ")")
 
     state
   end
@@ -177,13 +157,8 @@ defmodule TraceReader do
       {result_view, %{state| prev_result: result}}
     end
 
-    if result_view =~ ~R[\n] do
-      first_line = result_view |> String.split("\n") |> List.first()
-      IO.puts "#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} -> #{first_line}..."
-      IO.puts ">results\n" <> result_view <> "\n<results"
-    else
-      IO.puts "#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} -> #{result_view}"
-    end
+    prefix = "#{proc_name}:#{level}: ret  #{inspect(m)}:#{f}/#{arity} ⤶"
+    print_call(prefix, result_view)
 
     {_, state} = proc_change_level(pid, state, -1)
     state
@@ -199,6 +174,18 @@ defmodule TraceReader do
   def read(x,state) do
     IO.inspect x, limit: 10000, pretty: true, width: 140
     state
+  end
+
+  defp print_call(prefix, args_view, open_brace\\"", close_brace\\"") do
+    if args_view =~ ~R[\n] do
+      split_lines = args_view |> String.split("\n")
+      first_line = List.first(split_lines)
+      split_lines = split_lines |> Enum.map(&"    #{&1}") |> Enum.join("\n")
+      IO.puts "#{prefix} #{open_brace}#{first_line}… «⋯"
+      IO.puts "#{open_brace}#{split_lines}#{close_brace} ⋯»"
+    else
+      IO.puts "#{prefix} #{open_brace}#{args_view}#{close_brace}"
+    end
   end
 
   def proc2name(pid, state) do
