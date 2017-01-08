@@ -1,40 +1,51 @@
 "
 " Vim-Elixir-SmartTrace allows tight integration of Erlang tracing and Elixir
-" source browsing
+" source browsing.
 "
 " (items with 'x' are done)
 " TODO:
 "
-"
-" - running
-"   - run selected piece of code with tracing enabled
-"   - collect trace file
+" x running
+"   x run selected piece of code with tracing enabled
+"   x collect trace file
+"   x shortcuts to run test/selection
 "
 " - opening trace file
-"   - convert existing trace file in human readable way
-"       - call support
-"       - return values support
-"       - message send support
-"       - message receive support
+"   x convert existing trace file in human readable way
+"       x call support
+"       x return values support
+"       x message send support
+"       x message receive support
 "   - decode GenServer calls in a nice way
+"       x support handle_call
+"       - support handle_cast
+"       - support init
+"       - support terminate
+"
 "   - find function clause corresponding to supplied arguments
-"     - put it into interpreted trace file
-"   - find send function call???
-"     - put it into interpreted trace file
-"   - find receive function call???
-"     - put it into interpreted trace file
-"   - convert msg sender/receiver into ProcA/ProcB/etc notation
+"       x quick hack in VIM to find first atom in arguments and try to
+"         find it in handle_call, normal functions are not supported yet
+"       - extract function clauses and match argument with then so check which
+"         clause is really matched by erlang runtime. May be way sloow. (low)
+"   - better info on messages
+"       x convert msg sender/receiver into ProcA/ProcB/etc notation
 "       - possibly use module names if each sender/recv process initiated from
 "         different module
-"   - allow folding of calling arguments it too long (more than 1 line)
+"   x allow folding of calling arguments it too long (more than 1 line)
+"   - find send function call???
+"       - put it into interpreted trace file
+"   - find receive function call???
+"       - put it into interpreted trace file
 "
-" - navigation
-"   - jump to called/returning function from trace window
-"   - go to next/prev function call
-"   -
+"   - navigation
+"       x jump to called/returning function from trace window (Enter, p)
+"       - go to next/prev function call
+"       - skip fw/back over repeated function calls
+"       x jump between call/return clauses
 "
 
 let s:BOOT_FINISHED = 0
+let s:DEBUG_TRACE = 0
 
 function! vimelixirsmarttrace#boot() " {{{
   " TODO: move into if below?
@@ -62,10 +73,11 @@ endfunction " }}}
 function! vimelixirsmarttrace#setTraceCommand() " {{{
     "let mixDir = vimelixirsmarttrace#findMixDirectory()
     "command! -bang -buffer MixCompile call vimelixirsmarttrace#runMixCompileCommand('<bang>')
-    command! -range TraceSelection call vimelixirsmarttrace#runTraceSelectionCommand('!', <line1>, <line2>)
+    command! -range ErlTraceSelection call vimelixirsmarttrace#runTraceSelectionCommand('!', <line1>, <line2>)
 
-    command! TraceTest call vimelixirsmarttrace#runTracedTest()
-    "map <buffer> <Leader>xc :MixCompile<CR>
+    command! ErlTraceTest call vimelixirsmarttrace#runTracedTest()
+    map <buffer> <Leader>te :ErlTraceTest<CR>
+    map <buffer> <Leader>ts :ErlTraceSelection<CR>
 endfunction " }}}
 
 function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
@@ -86,6 +98,12 @@ function! vimelixirsmarttrace#runTracedTest() " {{{
 
     return s:runTrace(':ok', 'test', testSpec)
 endfunction " }}}
+
+function! vimelixirsmarttrace#debugToggle() " {{{
+    let s:DEBUG_TRACE = 1 - s:DEBUG_TRACE
+endfunction " }}}
+
+
 
 function! s:runTrace(code, env, testSpec) "{{{
     let mixDir = vimelixirsmarttrace#findMixDirectory()
@@ -114,12 +132,20 @@ function! s:runTrace(code, env, testSpec) "{{{
     " /usr/share/vim/vim80/autoload/zip.vim
     "
 
-    let trace_output = s:processTraceDump(trace_output)
+    if s:DEBUG_TRACE
+        debug let trace_output = s:processTraceDump(trace_output)
+    else
+        let trace_output = s:processTraceDump(trace_output)
+    endif
 
-    silent! new
+    "let height = winheight('%') / 2
+    let height = ''
+
+    silent! exec height . 'new'
     silent! setlocal buftype=nofile noswapfile nobuflisted ft=erltrace
     silent! put=trace_output
     silent! normal ggdd
+    silent! setlocal nomodifiable
 
 endfunction "}}}
 
@@ -216,76 +242,10 @@ function! s:setGlobal(name, default) " {{{
   endif
 endfunction " }}}
 
-function! vimelixirsmarttrace#runTraceHighlight() "{{{
-    " TODO: use conceal only in terminal version???
-    " TODO: use BufEnter/Leave to increase/decrease conceal contrast
-    "hi Conceal term=underline cterm=bold ctermfg=LightGray
-
-    syntax match Comma "❟" conceal cchar=,
-    if has("gui_running")
-        syntax match EOFStart "«⋯"
-        syntax match EOFEnd "⋯»"
-        syntax match ReturnValue "⤶"
-        syntax match MessageSend "→"
-        syntax match MessageRecv "←"
-        syntax match MessageDeadProcess "^\w\+→☠\w\+"
-    else
-        syntax match EOFStart "«⋯" conceal cchar=<
-        syntax match EOFEnd "⋯»" conceal cchar=>
-        syntax match ReturnValue "⤶" conceal cchar=<
-        syntax match MessageSend "→" conceal cchar=>
-        syntax match MessageRecv "←" conceal cchar=<
-        syntax match MessageDeadProcess "^\w\+→☠\w\+"
-    endif
-
-    hi link MessageDeadProcess Error
-    hi link EOFStart    Comment
-    hi link EOFEnd      Comment
-    hi link ReturnValue Comment
-    hi link MessageSend Comment
-    hi link MessageRecv Comment
-    hi link Comma       Comment
-
-    augroup ElixirSmartTraceFile
-        au!
-        au CursorMoved <buffer> call vimelixirsmarttrace#highlightMatch()
-    augroup END
-endfunction "}}}
-
-let s:highlightMatch = 0
-function! vimelixirsmarttrace#highlightMatch() "{{{
-    let ln = getline('.')
-
-    let matches = matchlist(ln, '^\([A-Z]\):\(\d\+\): \(\w\+\) ')
-
-    if len(matches) == 0
-        return
-    endif
-
-    if s:highlightMatch
-        silent! call matchdelete(s:highlightMatch)
-        let s:highlightMatch = 0
-    endif
-
-    let direction = 'nW'
-    if matches[3] == 'ret'
-        let direction .= 'b'
-    endif
-
-    let prefix = '^' . matches[1] . ':' . matches[2] . ': '
-
-    let [matchLnNum, ignoreCol] = searchpairpos(prefix . 'call', '', prefix . 'ret', direction)
-
-    if matchLnNum == 0
-        return
-    endif
-
-    let currentNum = line('.')
-
-    let s:highlightMatch = matchadd('MatchParen', '^\%(\%'. matchLnNum .'l\|\%'.currentNum.'l\)[A-Z]\+:\d\+: \w\+', 16, -1)
-endfunction "}}}
-
 function! s:processTraceDump(text) "{{{
+    let s:moduleNamesMap = {}
+    let s:originalWindow = win_getid()
+
     let lines = split(a:text, "\n")
 
     while len(lines) > 0 && lines[0] !~ '^======== trace start ========'
@@ -296,7 +256,20 @@ function! s:processTraceDump(text) "{{{
         call remove(lines, 0)
     endif
 
+    while len(lines) > 0 && lines[len(lines)-1] !~ '^======== module lines ========'
+        call remove(lines, -1)
+    endwhile
+    if len(lines) > 0 && lines[len(lines)-1] =~ '^======== module lines ========'
+        call remove(lines, -1)
+    endif
+
     while len(lines) > 0 && lines[len(lines)-1] !~ '^======== trace stop ========'
+        let matches = split(lines[len(lines)-1], ':')
+
+        let matches[0] = substitute(matches[0], '^Elixir\.', '', '')
+        let key = join(matches[0:2], ':')
+        let s:moduleNamesMap[key] = [ matches[3], join(matches[4:], ':') ]
+
         call remove(lines, -1)
     endwhile
 
@@ -306,6 +279,42 @@ function! s:processTraceDump(text) "{{{
 
     return join(lines, "\n")
 endfunction "}}}
+
+function! vimelixirsmarttrace#getModuleFunLines() " {{{
+    return s:moduleNamesMap
+endfunction " }}}
+
+function! vimelixirsmarttrace#openInOriginalWindow(fName, lineNo, optPattern, forceSwitch) " {{{
+    if !exists('s:originalWindow') | return | endif
+
+    let currentWinNr = winnr()
+    let lineNo = a:lineNo
+
+    let winNo = win_id2win(s:originalWindow)
+    exec winNo . "windo e +".lineNo. " " . a:fName
+
+    if a:optPattern != ''
+        let newLineNo = search(a:optPattern, 'cW')
+        if newLineNo > 0
+            let lineNo = newLineNo
+        endif
+    endif
+    exec winNo . "windo silent! foldopen!"
+    exec winNo . "windo normal zt"
+
+    if !a:forceSwitch
+        if exists('s:previewMatch')
+            if s:previewMatch
+                call matchdelete(s:previewMatch)
+            endif
+            let s:previewMatch = 0
+        endif
+
+        let s:previewMatch = matchadd('VisualNOS', '\%'.lineNo.'l', 20, -1)
+
+        silent execute currentWinNr . 'wincmd w'
+    endif
+endfunction " }}}
 
 augroup ElixirSmartTrace " {{{
     au!
