@@ -35,7 +35,7 @@ map <buffer> p :ErlTraceJumpToDef<CR>
 command! -buffer -nargs=1 ErlTraceNavSame call vimelixirtrace#erltrace#navigateSameFunc('<args>')
 
 map <silent> <buffer> ; :ErlTraceNavSame fw<CR>
-map <silent> <buffer> . :ErlTraceNavSame back<CR>
+map <silent> <buffer> , :ErlTraceNavSame back<CR>
 
 command! -buffer -nargs=1 ErlTraceNavFunc call vimelixirtrace#erltrace#navigateFunc('<args>')
 
