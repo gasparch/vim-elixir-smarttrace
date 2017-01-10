@@ -71,13 +71,11 @@ function! vimelixirsmarttrace#bootGlobal() " {{{
 endfunction " }}}
 
 function! vimelixirsmarttrace#setTraceCommand() " {{{
-    "let mixDir = vimelixirsmarttrace#findMixDirectory()
-    "command! -bang -buffer MixCompile call vimelixirsmarttrace#runMixCompileCommand('<bang>')
     command! -range ErlTraceSelection call vimelixirsmarttrace#runTraceSelectionCommand('!', <line1>, <line2>)
 
     command! ErlTraceTest call vimelixirsmarttrace#runTracedTest()
     map <buffer> <Leader>te :ErlTraceTest<CR>
-    map <buffer> <Leader>ts :ErlTraceSelection<CR>
+    map <buffer> <Leader>ty :ErlTraceSelection<CR>
 endfunction " }}}
 
 function! vimelixirsmarttrace#runTraceSelectionCommand(arg, line1, line2) " {{{
@@ -102,8 +100,6 @@ endfunction " }}}
 function! vimelixirsmarttrace#debugToggle() " {{{
     let s:DEBUG_TRACE = 1 - s:DEBUG_TRACE
 endfunction " }}}
-
-
 
 function! s:runTrace(code, env, testSpec) "{{{
     let mixDir = vimelixirsmarttrace#findMixDirectory()
@@ -181,21 +177,8 @@ function s:system(command) abort "{{{
 endfunction "}}}
 
 function! s:writeToFile(message, file) "{{{
-  silent! new
-  silent! setlocal buftype=nofile bufhidden=hide noswapfile nobuflisted
-  silent! put=a:message
-  silent! normal ggdd
-  silent! execute 'w ' a:file
-  silent! q
-endfunction "}}}
-
-function! s:appendToFile(message, file) "{{{
-  silent! new
-  silent! setlocal buftype=nofile bufhidden=hide noswapfile nobuflisted
-  silent! put=a:message
-  silent! normal ggdd
-  silent! execute 'w >>' a:file
-  silent! q
+  let lst = split(a:message, "\n")
+  call writefile(lst, a:file, 'b')
 endfunction "}}}
 
 function! vimelixirsmarttrace#findMixDirectory() "{{{
