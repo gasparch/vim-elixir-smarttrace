@@ -106,8 +106,9 @@ function! s:runTrace(code, env, testSpec) "{{{
 
     let tempName = tempname() .".erltrace"
     let srcTempName = fnameescape(tempname() .".exs")
+    let testHelper= fnameescape(mixDir . "/test/test_helper.exs")
 
-    let txt = vimelixirtrace#dump#dump(tempName, a:code, a:testSpec)
+    let txt = vimelixirtrace#dump#dump(tempName, a:code, a:testSpec, testHelper)
     call s:writeToFile(txt, srcTempName)
 
     " save options and locale env variables

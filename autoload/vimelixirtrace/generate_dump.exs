@@ -15,6 +15,7 @@ defmodule TraceRunner do
     :dbg.tracer(:port, port_fun)
 
     if is_running_test do
+      Code.require_file("%%TEST_HELPER%%")
       ExUnit.start autorun: false, trace: true, formatters: []
       single_file = test_spec
       {single_file, opts} = ExUnit.Filters.parse_path(single_file)
